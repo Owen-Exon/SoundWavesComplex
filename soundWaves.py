@@ -43,10 +43,11 @@ class Source():
         self.timePeriod = 1/frequency
         self.speed = speed
 
-
+def create2DArray(x, y, val=0):
+    return [[val for i in range(y)] for j in range(x)]
 
 def calculateSounds(sources:list[Source] = [Source(position=(0,0),wavelength=1,speed=1)],width:float|int=10,resolution:int=256,duration:float=5,framerate:int=10,timeConstant:float=1,showSources:bool=True):
-    videoFrames = []
+    tempFrames = []
 
     frameTime = 1/framerate * timeConstant
     numFrames = math.ceil(duration/frameTime)
@@ -60,7 +61,6 @@ def calculateSounds(sources:list[Source] = [Source(position=(0,0),wavelength=1,s
         maxAmplitude += source.amplitude
     
     invMaxAmplitude = 255/(2*maxAmplitude)
-    
     for frameNumber in range(numFrames):
         tempFrame = []
         x , y = initX , initY
@@ -83,10 +83,9 @@ def calculateSounds(sources:list[Source] = [Source(position=(0,0),wavelength=1,s
                             strength -= math.sin( twoPi * (source.startPhase + phase - timeSinceSourceStart*source.frequency)) * source.amplitude
                 
                 if isSource:
-                    tempRow.append((255,0,0)) 
+                    tempRow.append("S") 
                 else:
-                    pixelStr = int(strength*invMaxAmplitude + 127.5)
-                    tempRow.append((pixelStr,pixelStr,pixelStr))           
+                    tempRow.append(strength)           
         
                 x += increment
             
@@ -94,8 +93,49 @@ def calculateSounds(sources:list[Source] = [Source(position=(0,0),wavelength=1,s
             x = initX
             y -= increment
             
-        videoFrames.append(tempFrame)
+        tempFrames.append(tempFrame)
         print(f"Frame {frameNumber} Done")
+    
+    size = len(tempFrames[0])
+    
+    amplitudesFrames = create2DArray(size,size,0)
+    videoFrames = []
+    
+    print("Calculating Pixel Strengths")
+    
+    for frame in tempFrames:
+        y=0
+        tempFrame = create2DArray(size,size,0)
+        for row in frame:
+            x=0
+            for strength in row:
+                if strength == "S":
+                    tempFrame[x][y] = (255,0,0) 
+                    amplitudesFrames[x][y] = "S"
+                else:    
+                    pixelStr = int(strength*invMaxAmplitude + 127.5)
+                    tempFrame[x][y] = (pixelStr,pixelStr,pixelStr)   
+                    amplitudesFrames[x][y] += strength**2
+                x+=1
+            y+=1
+    
+    amplitudes = create2DArray(size,size,0)
+    print("Calculating Amplitude Strengths")
+
+    y=0
+    for row in amplitudesFrames:
+        x=0
+        for strengthList in row:
+            if strengthList == "S":
+                amplitudes[x][y] = (255,0,0)
+            else:
+                strength = math.sqrt(strengthList/numFrames)
+                pixelStr = int(strength*invMaxAmplitude*2)
+                amplitudes[x][y] = (pixelStr,pixelStr,pixelStr)  
+            x+=1
+        y+=1
+                    
+    saveImage("Amplitude.png",amplitudes)
     
     saveVideo("Sound.mp4",videoFrames,framerate)
     
