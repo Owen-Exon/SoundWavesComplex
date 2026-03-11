@@ -118,6 +118,7 @@ def calculateSounds(sources:list[Source] = [Source(position=(0,0),wavelength=1,s
                     amplitudesFrames[x][y] += strength**2
                 x+=1
             y+=1
+        videoFrames.append(tempFrame)
     
     amplitudes = create2DArray(size,size,0)
     print("Calculating Amplitude Strengths")
