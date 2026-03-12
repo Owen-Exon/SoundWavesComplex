@@ -4,12 +4,6 @@ import math
 import imageio.v2 as imageio
 from MathPlus import *
 
-def distanceSq(p1:tuple,p2:tuple):
-    dX = p2[0] - p1[0]
-    dY = p2[1] - p1[1]
-    return dX*dX + dY*dY
-
-
 def saveImage(fileName,pixels:list):
     array = np.array(pixels,dtype=np.uint8)
 
