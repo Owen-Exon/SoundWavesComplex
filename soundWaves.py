@@ -2,7 +2,7 @@ from PIL import Image
 import numpy as np
 import math
 import imageio.v2 as imageio
-
+from MathPlus import *
 
 def distanceSq(p1:tuple,p2:tuple):
     dX = p2[0] - p1[0]
@@ -43,101 +43,116 @@ class Source():
         self.timePeriod = 1/frequency
         self.speed = speed
 
-def create2DArray(x, y, val=0):
-    return [[val for i in range(y)] for j in range(x)]
+def convertListToFrame(pixelGrid):
+    step_size = int(math.sqrt(len(pixelGrid))) # Assumes Square
+    steps = range(0, len(pixelGrid), step_size)
+    grid = [pixelGrid[step:step + step_size] for step in steps]
+    return list(zip(*grid))[::-1]
 
-def calculateSounds(sources:list[Source] = [Source(position=(0,0),wavelength=1,speed=1)],width:float|int=10,resolution:int=256,duration:float=5,framerate:int=10,timeConstant:float=1,showSources:bool=True):
-    tempFrames = []
+def calculateSounds(sources:list[Source] = [Source(position=Vector2D(0,0),wavelength=1,speed=1)],width:float|int=10,resolution:int=256,duration:float=5,framerate:int=10,timeConstant:float=1,showSources:bool=True,calculateAmplitude=False):
 
-    frameTime = 1/framerate * timeConstant
-    numFrames = math.ceil(duration/frameTime)
-    maxAmplitude = 0
+    if showSources:
+        sourceSize = width/100
+
+    if calculateAmplitude:
+        for source in sources:
+            source.startTime=-999
     
-    center = (0,0)
+    frameDuration = 1/framerate * timeConstant
+    numFrames = math.ceil(duration/frameDuration)
+    
     increment = width / resolution
-    initX , initY = center[0]-width/2 , center[1]+width/2
+    center = Vector2D(0,0)
+    initX , initY = center.x-width/2 , center.y-width/2
     
+    maxAmplitude = 0
     for source in sources:
         maxAmplitude += source.amplitude
     
-    invMaxAmplitude = 255/(2*maxAmplitude)
+    invMaxAmplitude = 255/(maxAmplitude)
+    halfInvMaxAmplitude = invMaxAmplitude/2
+    
+    print(f"Calculating Pixel Distances")
+    
+    pixelInfos = []
+    for xIncrements in range(resolution):
+        for yIncrements in range(resolution):
+            position = Vector2D(initX + (increment * xIncrements) , initY + (increment * yIncrements))
+            pixelDistances = []
+            for source in sources:
+                sourceDistance = distanceBetween2Vector2D(position,source.position)
+                pixelDistances.append([source,sourceDistance])
+            pixelInfos.append(pixelDistances)
+    
+    print(f"Calculating Pixel Strengths")
+    
+    pixelStrengthFrames = []
     for frameNumber in range(numFrames):
-        tempFrame = []
-        x , y = initX , initY
-        time = (frameNumber*frameTime)
-        while (initY-y) < width:
-            tempRow = []
-            while (x-initX) < width:
-                isSource = False
-                strength = 0
-                for source in sources:
-                    pointDistanceSq = distanceSq((x,y),source.position)
-                    if pointDistanceSq < 0.01 and showSources:
-                        isSource = True
-                        break
-                    else:
-                        pointDistance = math.sqrt(pointDistanceSq)
-                        timeSinceSourceStart = time - source.startTime
-                        if timeSinceSourceStart > pointDistance / source.speed:
-                            phase = (pointDistance * source.invWavelength) % 1
-                            strength -= math.sin( twoPi * (source.startPhase + phase - timeSinceSourceStart*source.frequency)) * source.amplitude
+        strengthFrame = []
+        frameTime = (frameNumber*frameDuration)
+        for pixelInfo in pixelInfos:
+            strength = 0
+            
+            for possibleSource in pixelInfo:
+                tempSource = possibleSource[0]
+                sourceDistance = possibleSource[1]
+                timeSinceSourceStart = frameTime - tempSource.startTime
                 
-                if isSource:
-                    tempRow.append("S") 
-                else:
-                    tempRow.append(strength)           
-        
-                x += increment
+                if showSources and timeSinceSourceStart >= 0 and sourceDistance < sourceSize:
+                    strength = "S"
+                    break
+                
+                if timeSinceSourceStart > sourceDistance / tempSource.speed:
+                    phase = (sourceDistance * source.invWavelength) % 1
+                    strength -= math.sin( twoPi * (source.startPhase + phase - timeSinceSourceStart*source.frequency)) * source.amplitude
+            strengthFrame.append(strength)
+        pixelStrengthFrames.append(strengthFrame)
             
-            tempFrame.append(tempRow)
-            x = initX
-            y -= increment
-            
-        tempFrames.append(tempFrame)
+
         print(f"Frame {frameNumber} Done")
     
-    size = len(tempFrames[0])
+    print(f"Calculating Video Pixel Colours")
     
-    amplitudesFrames = create2DArray(size,size,0)
     videoFrames = []
-    
-    print("Calculating Pixel Strengths")
-    
-    for frame in tempFrames:
-        y=0
-        tempFrame = create2DArray(size,size,0)
-        for row in frame:
-            x=0
-            for strength in row:
-                if strength == "S":
-                    tempFrame[x][y] = (255,0,0) 
-                    amplitudesFrames[x][y] = "S"
-                else:    
-                    pixelStr = int(strength*invMaxAmplitude + 127.5)
-                    tempFrame[x][y] = (pixelStr,pixelStr,pixelStr)   
-                    amplitudesFrames[x][y] += strength**2
-                x+=1
-            y+=1
+
+    for frame in pixelStrengthFrames:
+        tempFrame = []
+        for pixelStrength in frame:
+            match pixelStrength:
+                case "S":
+                    tempFrame.append((255,0,0))
+                case _:
+                    pixelStr = int(pixelStrength*halfInvMaxAmplitude + 127.5)
+                    tempFrame.append((pixelStr,pixelStr,pixelStr)) 
         videoFrames.append(tempFrame)
     
-    amplitudes = create2DArray(size,size,0)
-    print("Calculating Amplitude Strengths")
-
-    y=0
-    for row in amplitudesFrames:
-        x=0
-        for strengthList in row:
-            if strengthList == "S":
-                amplitudes[x][y] = (255,0,0)
-            else:
-                strength = math.sqrt(strengthList/numFrames)
-                pixelStr = int(strength*invMaxAmplitude*2)
-                amplitudes[x][y] = (pixelStr,pixelStr,pixelStr)  
-            x+=1
-        y+=1
-                    
-    saveImage("Amplitude.png",amplitudes)
+    print(f"Saving Video")
     
-    saveVideo("Sound.mp4",videoFrames,framerate)
+    saveVideo("Sound.mp4",[convertListToFrame(pixelGrid) for pixelGrid in videoFrames],framerate)
+    
+    amplitudes = []
+    if calculateAmplitude:
+        print("Calculating Amplitude Strengths")
+        
+        for strengths in zip(*pixelStrengthFrames):
+            if strengths[0] == "S":
+                amplitudes.append("S")
+            else:
+                amplitudes.append(math.sqrt(sum([strength**2 for strength in strengths])/len(strengths)))
+                
+                
+        print("Calculating Amplitude Pixel Colours")
+        
+        amplitudesFrame = []
+        for amplitude in amplitudes:
+            if amplitude == "S":
+                amplitudesFrame.append((255,0,0))
+            else:
+                pixelStr = int(amplitude*invMaxAmplitude)
+                amplitudesFrame.append((pixelStr,pixelStr,pixelStr))  
+             
+        print(f"Saving Amplitudes")     
+                   
+        saveImage("Amplitude.png",convertListToFrame(amplitudesFrame))
     
     print("All Done")
