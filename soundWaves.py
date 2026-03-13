@@ -98,7 +98,7 @@ class Wall():
         else:
             return math.inf
 
-def calculateSounds(sources:list[Source] = [Source(position=Vector2D(0,0),wavelength=1,speed=1)],walls:list[Wall]=[],width:float|int=10,resolution:int=256,duration:float=5,framerate:int=10,timeConstant:float=1,showSources:int=1,calculateAmplitude=False):
+def calculateSounds(sources:list[Source] = [Source(position=Vector2D(0,0),wavelength=1,speed=1)],walls:list[Wall]=[],maxMirrorSources=10,width:float|int=10,resolution:int=256,duration:float=5,framerate:int=10,timeConstant:float=1,showSources:int=1,calculateAmplitude=False):
 
     if showSources >= 1:
         sourceSize = width/100
@@ -117,14 +117,17 @@ def calculateSounds(sources:list[Source] = [Source(position=Vector2D(0,0),wavele
     sourcesAndVirtual = sources.copy()
     
     done = False
-    for wall in walls:
-        sourcesAndVirtual = sourcesAndVirtual.copy()
+    i = 1
+    for source in sourcesAndVirtual:
+        i += 1
         virtualSources = []
-        for source in sourcesAndVirtual:
-            reflectionSource = wall.reflectSourceAcross(source)
-            if reflectionSource != None :
-                virtualSources.append(reflectionSource)
+        for wall in walls:
+            if source.vWall != wall:
+                reflectionSource = wall.reflectSourceAcross(source)
+                if reflectionSource != None :
+                    virtualSources.append(reflectionSource)
         sourcesAndVirtual.extend(virtualSources)
+        if i >= maxMirrorSources: break
     
     maxAmplitude = 0
     for source in sourcesAndVirtual:
