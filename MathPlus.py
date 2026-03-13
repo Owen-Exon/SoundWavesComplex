@@ -27,7 +27,8 @@ def solveQuadratic(quadratic_a:float,quadratic_b:float,quadratic_c:float) -> tup
     root2 = ((-quadratic_b - math.sqrt(discriminant)) / (2 * quadratic_a))
     return root1,root2
 
-
+def crossProduct(v1:Vector2D,v2:Vector2D):
+    return v1.x*v2.y-v1.y*v2.x
 
 class Angle:
     
@@ -179,6 +180,11 @@ class Vector2D:
         if self._normal == None:
             self._normal = Vector2D(self.y * -1, self.x)
         return self._normal
+    
+    def gradient(self):
+        if self.x ==0:
+            return math.inf
+        return self.y/self.x
 
 
 

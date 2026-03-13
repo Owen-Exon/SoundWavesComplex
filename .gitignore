@@ -2,6 +2,7 @@
 Sound.mp4
 Amplitude.png
 *test*.py
+outputImages/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
