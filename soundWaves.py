@@ -71,13 +71,11 @@ class Wall():
         tempSource = source.copy()
         point = tempSource.position
         potentialPoint = point - 2 * (dotProduct((point-self.start),self.unitNormal)) * self.unitNormal
-        if self.crossesBetweenPoints(point,potentialPoint):
-            tempSource.position = potentialPoint
-            tempSource.isVirtual = True
-            tempSource.vWall = self
-            return tempSource 
-        else:
-            return None
+        
+        tempSource.position = potentialPoint
+        tempSource.isVirtual = True
+        tempSource.vWall = self
+        return tempSource 
     
     def crossesBetweenPoints(self,p1:Vector2D,p2:Vector2D):        
         v2 = p1-p2
