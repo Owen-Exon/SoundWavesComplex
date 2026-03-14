@@ -60,12 +60,13 @@ def convertListToFrame(pixelGrid):
     return list(zip(*grid))[::-1]
 
 class Wall():
-    def __init__(self,p1:Vector2D,p2:Vector2D):
+    def __init__(self,p1:Vector2D,p2:Vector2D,isAbsorber=False):
         self.start = p1
         self.end = p2
         self.vector = p2-p1
         self.unitNormal = self.vector.normal().unitVector()
         self.gradient = self.vector.gradient()
+        self.isAbsorber = isAbsorber
 
     def reflectSourceAcross(self,source:Source):
         tempSource = source.copy()
@@ -93,7 +94,7 @@ class Wall():
     
     def distanceToPoint(self,point:Vector2D):
         nearestPoint = (self.start)- self.vector*(dotProduct(self.start-point,self.vector))/(dotProduct(self.vector,self.vector))
-        if isBetween(nearestPoint.x,self.start.x,self.end.x):
+        if isBetween(nearestPoint.x,self.start.x,self.end.x) and isBetween(nearestPoint.y,self.start.y,self.end.y):
             return (nearestPoint-point).mod()
         else:
             return math.inf
@@ -116,12 +117,13 @@ def calculateSounds(sources:list[Source] = [Source(position=Vector2D(0,0),wavele
     
     sourcesAndVirtual = sources.copy()
     
-    done = False
+    mirrorWalls = [wall for wall in walls if not wall.isAbsorber]
+    
     i = 1
     for source in sourcesAndVirtual:
         i += 1
         virtualSources = []
-        for wall in walls:
+        for wall in mirrorWalls:
             if source.vWall != wall:
                 reflectionSource = wall.reflectSourceAcross(source)
                 if reflectionSource != None :
