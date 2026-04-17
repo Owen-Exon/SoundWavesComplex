@@ -3,6 +3,7 @@ import numpy as np
 import math
 import imageio.v2 as imageio
 from MathPlus import *
+import os
 
 def saveImage(fileName,pixels:list):
     array = np.array(pixels,dtype=np.uint8)
@@ -99,14 +100,21 @@ class Wall():
         else:
             return math.inf
 
-def calculateSounds(sources:list[Source] = [Source(position=Vector2D(0,0),wavelength=1,speed=1)],walls:list[Wall]=[],maxMirrorSources=10,width:float|int=10,resolution:int=256,duration:float=5,framerate:int=10,timeConstant:float=1,showSources:int=1,calculateAmplitude=False):
+def calculateSounds(fileName,sources:list[Source] = [Source(position=Vector2D(0,0),wavelength=1,speed=1)],walls:list[Wall]=[],maxMirrorSources=10,width:float|int=10,resolution:int=256,duration:float=5,framerate:int=10,timeConstant:float=1,showSources:int=1,calculateAmplitude=False,asImageSequence=False):
+
+    for file in os.listdir("outputImages"):
+        file_path = os.path.join("outputImages", file)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
 
     if showSources >= 1:
         sourceSize = width/100
+    else:
+        sourceSize = 0
 
     if calculateAmplitude:
         for source in sources:
-            source.startTime=-999
+            source.startTime=-9999999999999
     
     frameDuration = 1/framerate * timeConstant
     numFrames = math.ceil(duration/frameDuration)
@@ -210,8 +218,8 @@ def calculateSounds(sources:list[Source] = [Source(position=Vector2D(0,0),wavele
     print(f"Saving Video")
     
     frames = [convertListToFrame(pixelGrid) for pixelGrid in videoFrames]
-    [saveImage(f"outputImages/Img{i}.png",frames[i]) for i in range(len(frames))]
-    saveVideo("Sound.mp4",frames,framerate)
+    if asImageSequence : [saveImage(f"outputImages/Img{i}.png",frames[i]) for i in range(len(frames))]
+    saveVideo(fileName,frames,framerate)
     
     amplitudes = []
     if calculateAmplitude:
@@ -241,6 +249,6 @@ def calculateSounds(sources:list[Source] = [Source(position=Vector2D(0,0),wavele
              
         print(f"Saving Amplitudes")     
                    
-        saveImage("Amplitude.png",convertListToFrame(amplitudesFrame))
+        saveImage(f"{fileName}Amplitude.png",convertListToFrame(amplitudesFrame))
     
     print("All Done")
