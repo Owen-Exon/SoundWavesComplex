@@ -1,9 +1,7 @@
 from PIL import Image
 import numpy as np
 import math
-import imageio.v2 as imageio
 from MathPlus import *
-import os
 
 def saveImage(fileName,pixels:list):
     array = np.array(pixels,dtype=np.uint8)
@@ -11,26 +9,21 @@ def saveImage(fileName,pixels:list):
     newImage = Image.fromarray(array)
     newImage.save(fileName)
 
-def saveVideo(fileName,frames,frameRate):
-    frames = [np.array(img,dtype=np.uint8) for img in frames]
-
-    if fileName[-3:] == "gif":
-        imageio.mimsave(fileName, frames, fps=frameRate,loop=0)
-    else:
-        imageio.mimsave(fileName, frames, fps=frameRate)
-
 twoPi = 2 * math.pi
 
 class Source():
-    def __init__(self,position,wavelength=None,frequency=None,speed=None,amplitude=1,startTime=0,startPhase=0,isVirtual=False,virtualWall = None):
+    def __init__(self,position,wavelength=None,frequency=None,speed=None,amplitude=1,startPhase=0,isVirtual=False,virtualWall = None):
+        if wavelength == 0 or frequency == 0:
+            raise ValueError("wavelength and frequency must be non-zero")
+        
         self.position = position
         self.amplitude = amplitude
-        self.startTime = startTime
         self.startPhase = startPhase
         
-        if wavelength == None: wavelength = speed/frequency
-        elif frequency == None: frequency = speed/wavelength
-        elif speed == None: speed = frequency*wavelength
+        
+        if wavelength is None: wavelength = speed/frequency
+        elif frequency is None: frequency = speed/wavelength
+        elif speed is None: speed = frequency*wavelength
         
         self.wavelength = wavelength
         self.invWavelength = 1/wavelength
@@ -47,7 +40,6 @@ class Source():
             self.frequency,
             self.speed,
             self.amplitude,
-            self.startTime,
             self.startPhase,
             self.isVirtual,
             self.vWall
@@ -84,7 +76,7 @@ class Wall():
         r = p2 - self.start
         d = crossProduct(self.vector,v2)
         
-        if d == 0: return False
+        if abs(d) < 1e-9: return False
         
         t = crossProduct(r,v2) / d
         u = crossProduct(r,self.vector) / d
@@ -100,27 +92,29 @@ class Wall():
         else:
             return math.inf
 
-def calculateSounds(fileName,sources:list[Source] = [Source(position=Vector2D(0,0),wavelength=1,speed=1)],walls:list[Wall]=[],maxMirrorSources=10,width:float|int=10,resolution:int=256,duration:float=5,framerate:int=10,timeConstant:float=1,showSources:int=1,calculateAmplitude=False,asImageSequence=False):
+def rms(iterable):
+    return math.sqrt(sum([strength**2 for strength in iterable])/len(iterable))
 
-    for file in os.listdir("outputImages"):
-        file_path = os.path.join("outputImages", file)
-        if os.path.isfile(file_path):
-            os.remove(file_path)
-
+def calculateSounds(
+    fileName,
+    sources:list[Source],
+    walls:list[Wall],
+    maxMirrorSources=10,
+    width:float|int=10,
+    center:Vector2D=Vector2D(0,0),
+    resolution:int=256,
+    duration:float=5,
+    numFrames:int=10,
+    showSources:int=1,
+):
     if showSources >= 1:
         sourceSize = width/100
     else:
         sourceSize = 0
-
-    if calculateAmplitude:
-        for source in sources:
-            source.startTime=-9999999999999
     
-    frameDuration = 1/framerate * timeConstant
-    numFrames = math.ceil(duration/frameDuration)
+    frameDuration = duration/numFrames
     
     increment = width / resolution
-    center = Vector2D(0,0)
     initX , initY = center.x-width/2 , center.y-width/2
     
     sourcesAndVirtual = sources.copy()
@@ -144,7 +138,6 @@ def calculateSounds(fileName,sources:list[Source] = [Source(position=Vector2D(0,
         maxAmplitude += source.amplitude
     
     invMaxAmplitude = 255/(maxAmplitude)
-    halfInvMaxAmplitude = invMaxAmplitude/2
     
     print(f"Calculating Pixel Distances")
     
@@ -158,97 +151,56 @@ def calculateSounds(fileName,sources:list[Source] = [Source(position=Vector2D(0,
                 pixelDistances = []
                 for source in sourcesAndVirtual:
                     sourceDistance = distanceBetween2Vector2D(position,source.position)
-                    if (not source.isVirtual and not any(wall.crossesBetweenPoints(position,source.position) for wall in walls) or (source.isVirtual and source.vWall.crossesBetweenPoints(position,source.position) and not any(wall.crossesBetweenPoints(position,source.position) for wall in [x for x in walls if x != source.vWall]))) or sourceDistance <= sourceSize:
+                    if sourceDistance < sourceSize:
+                        if showSources >= 1 and not source.isVirtual:
+                            pixelDistances = "S"
+                            break
+                        elif showSources >= 2 and source.isVirtual:
+                            pixelDistances = "V"
+                            break
+                    #     (If source is real    and isn't blocked by a wall ...                                                   ) or (source is virtual and is point is beyond it's mirror wall                        and isn't blocked by any other walls                                                                                )
+                    elif ((not source.isVirtual and not any(wall.crossesBetweenPoints(position,source.position) for wall in walls)) or (source.isVirtual and source.vWall.crossesBetweenPoints(position,source.position) and not any(wall.crossesBetweenPoints(position,source.position) for wall in [x for x in walls if x != source.vWall]))):
                         pixelDistances.append([source,sourceDistance])
                 
             pixelInfos.append(pixelDistances)
     
     print(f"Calculating Pixel Strengths")
     
-    pixelStrengthFrames = []
-    for frameNumber in range(numFrames):
-        strengthFrame = []
-        frameTime = (frameNumber*frameDuration)
-        for pixelInfo in pixelInfos:
-            strength = 0
-            
-            if pixelInfo == "W":
-                strength = "W"
-            else:
+    pixelStrengths = []
+    for pixelInfo in pixelInfos:        
+        if isinstance(pixelInfo,str):
+            pixelStrengths.append(pixelInfo)
+        else:
+            thisPixelStrengths = []
+            for frameNumber in range(numFrames):
+                frameStrength = 0
+                frameTime = (frameNumber*frameDuration)
                 for possibleSource in pixelInfo:
-                    tempSource = possibleSource[0]
+                    source = possibleSource[0]
                     sourceDistance = possibleSource[1]
-                    timeSinceSourceStart = frameTime - tempSource.startTime
                     
-                    if timeSinceSourceStart >= 0 and sourceDistance < sourceSize:
-                        if showSources >= 1 and not tempSource.isVirtual:
-                            strength = "S"
-                            break
-                        elif showSources >= 2 and tempSource.isVirtual:
-                            strength = "V"
-                            break
-                    
-                    if timeSinceSourceStart > sourceDistance / tempSource.speed:
-                        phase = (sourceDistance * source.invWavelength) % 1
-                        strength -= math.sin( twoPi * (source.startPhase + phase - timeSinceSourceStart*source.frequency)) * source.amplitude
-            strengthFrame.append(strength)
-        pixelStrengthFrames.append(strengthFrame)
-            
-        print(f"Frame {frameNumber} Done")
+                    phase = (sourceDistance * source.invWavelength) % 1
+                    frameStrength -= math.sin( twoPi * (source.startPhase + phase - frameTime*source.frequency)) * source.amplitude
+                thisPixelStrengths.append(frameStrength)
+            pixelStrengths.append(rms(thisPixelStrengths))
     
     print(f"Calculating Video Pixel Colours")
-    
-    videoFrames = []
 
-    for frame in pixelStrengthFrames:
-        tempFrame = []
-        for pixelStrength in frame:
-            match pixelStrength:
-                case "S":
-                    tempFrame.append((255,0,0))
-                case "V":
-                    tempFrame.append((0,255,0))
-                case "W":
-                    tempFrame.append((0,0,255))
-                case _:
-                    pixelStr = int(pixelStrength*halfInvMaxAmplitude + 127.5)
-                    tempFrame.append((pixelStr,pixelStr,pixelStr)) 
-        videoFrames.append(tempFrame)
-    
-    print(f"Saving Video")
-    
-    frames = [convertListToFrame(pixelGrid) for pixelGrid in videoFrames]
-    if asImageSequence : [saveImage(f"outputImages/Img{i}.png",frames[i]) for i in range(len(frames))]
-    saveVideo(fileName,frames,framerate)
-    
-    amplitudes = []
-    if calculateAmplitude:
-        print("Calculating Amplitude Strengths")
-        
-        for strengths in zip(*pixelStrengthFrames):
-            if strengths[0] in ["S","V","W"]:
-                amplitudes.append(strengths[0])
-            else:
-                amplitudes.append(math.sqrt(sum([strength**2 for strength in strengths])/len(strengths)))
-                
-                
-        print("Calculating Amplitude Pixel Colours")
-        
-        amplitudesFrame = []
-        for amplitude in amplitudes:
-            match amplitude:
-                case "S":
-                    amplitudesFrame.append((255,0,0))
-                case "V":
-                    amplitudesFrame.append((0,255,0))
-                case "W":
-                    amplitudesFrame.append((0,0,255))
-                case _:
-                    pixelStr = int(amplitude*invMaxAmplitude)
-                    amplitudesFrame.append((pixelStr,pixelStr,pixelStr))  
+    amplitudesFrame = []
+    for amplitude in pixelStrengths:
+        match amplitude:
+            case "S":
+                amplitudesFrame.append((255,0,0))
+            case "V":
+                amplitudesFrame.append((0,255,0))
+            case "W":
+                amplitudesFrame.append((0,0,255))
+            case _:
+                pixelStr = int(amplitude*invMaxAmplitude)
+                amplitudesFrame.append((pixelStr,pixelStr,pixelStr))
              
-        print(f"Saving Amplitudes")     
-                   
-        saveImage(f"{fileName}Amplitude.png",convertListToFrame(amplitudesFrame))
+    print(f"Saving Amplitudes")     
     
+    saveImage(f"{fileName}.png",convertListToFrame(amplitudesFrame))
+
     print("All Done")
